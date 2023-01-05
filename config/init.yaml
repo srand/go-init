@@ -1,0 +1,9 @@
+services:
+  - name: "sleep"
+    command: ["sleep", "10"]
+    pidfile: 
+      create: true
+  - name: "fail"
+    command: ["sh", "-c", "sleep 5 && false"]
+    pidfile: 
+      create: true
