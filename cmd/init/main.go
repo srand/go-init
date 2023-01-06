@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -43,10 +42,6 @@ func run(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	for _, service := range registry.Services {
-		fmt.Println(service.Name)
-	}
-
 	pidfileMonitor, err := monitors.NewFileMonitor(pidfileDir)
 	if err != nil {
 		panic(err)
@@ -57,7 +52,6 @@ func run(cmd *cobra.Command, args []string) {
 
 	for _, svc := range registry.Services {
 		go svc.Supervise(processMonitor, pidfileMonitor)
-		go svc.Start()
 	}
 
 	processMonitor.Supervise()

@@ -1,82 +1,133 @@
 package services
 
 import (
+	"fmt"
 	"log"
 	"os/exec"
 	"syscall"
 
 	"github.com/srand/go-init/pkg/config"
 	"github.com/srand/go-init/pkg/monitors"
-	"github.com/srand/go-init/pkg/utils"
+	"github.com/srand/go-init/pkg/state"
 )
 
 const (
-	// Newly created service, never started
-	ServiceStatusCreated = "Created"
-
-	// Service conditions have not been satisfied, service not running
-	ServiceStatusBlocked = "Blocked"
-
 	// Service running, pidfile exists
 	ServiceStatusRunning = "Running"
 
 	// Service manually stopped.
 	ServiceStatusStopped = "Stopped"
 
-	// Service has terminated with exit status != 0, may be restarted
-	ServiceStatusCrashed = "Crashed"
-
-	// Service will be restarted, not running
-	ServiceStatusRestart = "Restart"
-
 	// Process running, but no pidfile exists yet
 	ServiceStatusStarting = "Starting"
+
+	// Process has been sent SIGTERM but has not yet terminated.
+	ServiceStatusStopping = "Stopping"
 
 	// Service is misconfigured and cannot be started
 	ServiceStatusError = "Error"
 )
 
+const (
+	ServiceActionStart = iota
+	ServiceActionStop
+)
+
+type ServiceAction int
 type ServiceStatus string
 
 type Service struct {
-	Name         string
-	Command      []string
-	Pid          int
-	PidFile      *PidFile
-	Status       ServiceStatus
-	StatusBroker *utils.Broker[ServiceStatus]
+	Name          string
+	Command       []string
+	Config        *config.ConfigService
+	Pid           int
+	PidFile       *PidFile
+	Preconditions []string
+	Status        state.State[string]
 
-	statusChan chan ServiceStatus
+	Actions    []state.Action
+	Conditions []state.Condition
+	Triggers   []state.Trigger
+
+	actionChan chan ServiceAction
 	command    *exec.Cmd
 }
 
 func NewService(svcConfig *config.ConfigService) (*Service, error) {
-	return &Service{
-		Name:         svcConfig.Name,
-		Command:      svcConfig.Command,
-		Pid:          0,
-		PidFile:      NewPidFile(svcConfig),
-		Status:       ServiceStatusCreated,
-		StatusBroker: utils.NewBroker[ServiceStatus](),
-		statusChan:   make(chan ServiceStatus),
-	}, nil
+	service := &Service{
+		Name:          svcConfig.Name,
+		Command:       svcConfig.Command,
+		Config:        svcConfig,
+		Pid:           0,
+		PidFile:       NewPidFile(svcConfig),
+		Preconditions: svcConfig.Conditions,
+		actionChan:    make(chan ServiceAction),
+	}
+
+	service.Status = state.NewState(
+		fmt.Sprintf("services.%s.state", service.Name),
+		ServiceStatusStopped,
+	)
+
+	service.Conditions = append(service.Conditions, state.NewStateCondition(
+		fmt.Sprintf("services.%s.state.stopped", service.Name),
+		service.Status,
+		ServiceStatusStopped,
+	))
+
+	service.Conditions = append(service.Conditions, state.NewStateCondition(
+		fmt.Sprintf("services.%s.state.stopping", service.Name),
+		service.Status,
+		ServiceStatusStopping,
+	))
+
+	service.Conditions = append(service.Conditions, state.NewStateCondition(
+		fmt.Sprintf("services.%s.state.starting", service.Name),
+		service.Status,
+		ServiceStatusStarting,
+	))
+
+	service.Conditions = append(service.Conditions, state.NewStateCondition(
+		fmt.Sprintf("services.%s.state.running", service.Name),
+		service.Status,
+		ServiceStatusRunning,
+	))
+
+	service.Conditions = append(service.Conditions, state.NewStateCondition(
+		fmt.Sprintf("services.%s.state.error", service.Name),
+		service.Status,
+		ServiceStatusError,
+	))
+
+	service.Actions = append(service.Actions, state.NewAction(
+		fmt.Sprintf("services.%s.action.start", service.Name),
+		func() error {
+			go service.Start()
+			return nil
+		},
+	))
+
+	service.Actions = append(service.Actions, state.NewAction(
+		fmt.Sprintf("services.%s.action.stop", service.Name),
+		func() error {
+			go service.Stop()
+			return nil
+		},
+	))
+
+	return service, nil
 }
 
 func (s *Service) Start() {
-	s.statusChan <- ServiceStatusStarting
+	s.actionChan <- ServiceActionStart
 }
 
 func (s *Service) Stop() {
-	s.statusChan <- ServiceStatusStopped
+	s.actionChan <- ServiceActionStop
 }
 
 func (s *Service) setStatus(status ServiceStatus) {
-	log.Println("Service status change:", s.Name, status)
-
-	s.Status = status
-
-	// Notify subscribers about new service status
-	s.StatusBroker.Publish(s.Status)
+	s.Status.Set(string(status))
 }
 
 func (s *Service) spawn() error {
@@ -94,6 +145,19 @@ func (s *Service) kill() {
 	syscall.Kill(s.Pid, syscall.SIGTERM)
 }
 
+func (s *Service) FindAction(name string) state.Action {
+	for _, action := range s.Actions {
+		if action.Name() == fmt.Sprintf("services.%s.action.%s", s.Name, name) {
+			return action
+		}
+	}
+	return nil
+}
+
+func (s *Service) AddTrigger(trig state.Trigger) {
+	s.Triggers = append(s.Triggers, trig)
+}
+
 func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor *monitors.FileMonitor) {
 	procChan := procMonitor.Subscribe()
 	pidfileChan := pidfileMonitor.Subscribe()
@@ -106,16 +170,14 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 			}
 
 			s.Pid = 0
+			s.setStatus(ServiceStatusStopped)
 			if event.Status != 0 {
-				s.setStatus(ServiceStatusCrashed)
 			} else {
-				s.setStatus(ServiceStatusRestart)
-				go s.Start()
 			}
 
 		case event := <-pidfileChan:
 			if event.Name == s.PidFile.Path {
-				switch s.Status {
+				switch s.Status.Get() {
 				case ServiceStatusStarting:
 					if pid := s.PidFile.Get(); pid == s.Pid {
 						s.setStatus(ServiceStatusRunning)
@@ -124,16 +186,12 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 				}
 			}
 
-		case status := <-s.statusChan:
+		case cmd := <-s.actionChan:
 			// log.Println("Service status change requested:", s.Name, s.Status, status)
-			switch status {
-			case ServiceStatusStarting:
+			switch cmd {
+			case ServiceActionStart:
 				// Requested to start service, act according to current status
-				switch s.Status {
-				case ServiceStatusCreated:
-					fallthrough
-				case ServiceStatusRestart:
-					fallthrough
+				switch s.Status.Get() {
 				case ServiceStatusStopped:
 					err := s.spawn()
 					if err != nil {
@@ -147,10 +205,10 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 						s.PidFile.Write(s.Pid)
 					}
 				default:
-					log.Println("Cannot start service in current state:", s.Name, status)
+					log.Println("Cannot start service in current state:", s.Name)
 				}
-			case ServiceStatusStopped:
-				switch s.Status {
+			case ServiceActionStop:
+				switch s.Status.Get() {
 				case ServiceStatusStarting:
 				case ServiceStatusRunning:
 					s.kill()
