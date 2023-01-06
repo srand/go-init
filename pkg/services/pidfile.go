@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/srand/go-init/pkg/config"
 )
@@ -48,7 +49,9 @@ func (f *PidFile) Get() int {
 		return 0
 	}
 
-	pid, err := strconv.Atoi(string(data))
+	dataStr := strings.TrimSpace(string(data))
+
+	pid, err := strconv.Atoi(dataStr)
 	if err != nil {
 		return 0
 	}

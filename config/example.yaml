@@ -1,0 +1,16 @@
+services:
+  - name: ntpd
+    command: ["/usr/sbin/ntpd", "-n", "-N"]
+
+  - name: rsyslogd
+    command: ["/usr/sbin/rsyslogd", "-n"]
+
+  - name: sshd
+    command: ["/usr/sbin/sshd", "-D"]
+    conditions:
+      - services.tmpfiles.state.running
+
+  - name: tmpfiles
+    command: ["mkdir", "-p", "/var/run/sshd"]
+    pidfile:
+      create: true
