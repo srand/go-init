@@ -1,4 +1,4 @@
-package services
+package core
 
 import (
 	"fmt"
@@ -43,7 +43,10 @@ type Service struct {
 	Pid           int
 	PidFile       *PidFile
 	Preconditions []string
-	Status        state.State[string]
+
+	Errors   state.State[int]
+	Restarts state.State[int]
+	Status   state.State[string]
 
 	Actions    []state.Action
 	Conditions []state.Condition
@@ -63,6 +66,16 @@ func NewService(registry state.ReferenceRegistry, svcConfig *config.ConfigServic
 		Preconditions: svcConfig.Conditions,
 		actionChan:    make(chan ServiceAction),
 	}
+
+	service.Errors = state.NewState(
+		fmt.Sprintf("services.%s.errors", service.Name),
+		0,
+	)
+
+	service.Restarts = state.NewState(
+		fmt.Sprintf("services.%s.restarts", service.Name),
+		0,
+	)
 
 	service.Status = state.NewState(
 		fmt.Sprintf("services.%s.state", service.Name),
@@ -209,6 +222,7 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 			s.Pid = 0
 			if event.Status != 0 {
 				s.setStatus(ServiceStatusError)
+				s.Errors.Set(s.Errors.Get() + 1)
 			} else {
 				s.setStatus(ServiceStatusStopped)
 			}
@@ -234,6 +248,8 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 				case ServiceStatusStopped:
 					fallthrough
 				case ServiceStatusError:
+					s.Restarts.Set(s.Restarts.Get() + 1)
+
 					err := s.spawn()
 					if err != nil {
 						log.Println("Service failed to start:", s.Name, err.Error())

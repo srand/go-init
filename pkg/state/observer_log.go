@@ -2,9 +2,9 @@ package state
 
 import "log"
 
-type StateLogger struct{}
+type StateLogger[T string | int] struct{}
 
-func (o *StateLogger) OnChange(obj State[string], val string) {
+func (o *StateLogger[T]) OnChange(obj State[T], val T) {
 	log.Println("=", obj.Name(), val)
 }
 

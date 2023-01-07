@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/srand/go-init/pkg/config"
+	"github.com/srand/go-init/pkg/core"
 	"github.com/srand/go-init/pkg/monitors"
-	"github.com/srand/go-init/pkg/services"
 )
 
 var rootCmd = cobra.Command{
@@ -30,14 +30,14 @@ func run(cmd *cobra.Command, args []string) {
 	if err != nil {
 		panic(err)
 	}
-	services.SetPidFileDir(pidfileDir)
+	core.SetPidFileDir(pidfileDir)
 
 	configFile, err := config.ParseFile(configFilePath)
 	if err != nil {
 		panic(err)
 	}
 
-	registry, err := services.NewRegistry(configFile)
+	registry, err := core.NewRegistry(configFile)
 	if err != nil {
 		panic(err)
 	}
