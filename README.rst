@@ -23,6 +23,13 @@ Example configuration:
         conditions:
           - tasks.sshd.tmpdir.state.completed
 
+    sysctl:
+      include:
+        - /etc/sysctl.d/*.conf
+      parameters:
+        - key: net.ipv4.conf.all.forwarding
+          value: 1
+
 
 Services
 --------
@@ -64,6 +71,28 @@ Conditions
  - services.<service-name>.state.running
  - services.<service-name>.state.stopped
  - services.<service-name>.state.error
+
+
+System Control
+--------------
+
+Sets system control parameters.
+
+
+Schema
+^^^^^^
+
++-----------------+-------------+--------------------------------------------------+
+| Attribute       | Type        | Description                                      |
++=================+=============+==================================================+
+| include         | string      | Glob pattern matching property files to load     |
++-----------------+-------------+--------------------------------------------------+
+| parameters      | []Parameter | List of parameters to assign                     |
++-----------------+-------------+--------------------------------------------------+
+| Parameter.key   | string      | Configuration key                                |
++-----------------+-------------+--------------------------------------------------+
+| Parameter.value | string      | Configuration value                              |
++-----------------+-------------+--------------------------------------------------+
 
 
 Tasks

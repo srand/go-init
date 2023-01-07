@@ -10,6 +10,7 @@ import (
 // Representation of a configuration file
 type ConfigFile struct {
 	Services []*ConfigService `yaml:"services"`
+	Sysctl   *ConfigSysctl    `yaml:"sysctl"`
 	Tasks    []*ConfigTask    `yaml:"tasks"`
 }
 

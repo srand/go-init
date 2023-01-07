@@ -37,6 +37,10 @@ func run(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
+	if configFile.Sysctl != nil && !core.ApplySysctl(configFile.Sysctl) {
+		panic("failed to set system parameters")
+	}
+
 	registry, err := core.NewRegistry(configFile)
 	if err != nil {
 		panic(err)
