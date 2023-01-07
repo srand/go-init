@@ -56,6 +56,7 @@ func (s *refCond) OnReferenceFound(name string, obj any) {
 	}
 
 	if cond, ok := obj.(Condition); ok {
+		// log.Println("!+", name, cond.Get())
 		cond.Subscribe(s)
 		s.set(cond.Get())
 	}
@@ -67,6 +68,7 @@ func (s *refCond) OnReferenceLost(name string, obj any) {
 	}
 
 	if cond, ok := obj.(Condition); ok {
+		// log.Println("!-", name, cond.Get())
 		cond.Unsubscribe(s)
 		s.set(false)
 	}

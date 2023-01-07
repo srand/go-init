@@ -80,6 +80,26 @@ func (r *Registry) SubscribeReference(name string, observer state.ReferenceObser
 	r.observerMutex.Lock()
 	defer r.observerMutex.Unlock()
 	r.observers[observer] = struct{}{}
+
+	if obj, ok := r.Actions[name]; ok {
+		observer.OnReferenceFound(name, obj)
+		return
+	}
+
+	if obj, ok := r.Conditions[name]; ok {
+		observer.OnReferenceFound(name, obj)
+		return
+	}
+
+	if obj, ok := r.Services[name]; ok {
+		observer.OnReferenceFound(name, obj)
+		return
+	}
+
+	if obj, ok := r.Tasks[name]; ok {
+		observer.OnReferenceFound(name, obj)
+		return
+	}
 }
 
 func (r *Registry) UnsubscribeReference(name string, observer state.ReferenceObserver) {

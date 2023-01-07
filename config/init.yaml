@@ -1,7 +1,12 @@
 services:
+  - name: "sleep"
+    command: ["sh", "-c", "sleep 5"]
+    pidfile: 
+      create: true
   - name: "fail"
-    command: ["sh", "-c", "sleep 5 && false"]
+    command: ["sh", "-c", "sleep 50 && false"]
     conditions:
+      - services.sleep.state.running
       - tasks.tmpdir.state.completed
     pidfile: 
       create: true
