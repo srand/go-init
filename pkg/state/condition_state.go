@@ -26,6 +26,7 @@ func (s *stateCond) set(value bool) {
 
 func (s *stateCond) Subscribe(observer Observer[Condition, bool]) {
 	s.observable.Subscribe(observer)
+	observer.OnChange(s, s.Get())
 }
 
 func (s *stateCond) Unsubscribe(observer Observer[Condition, bool]) {

@@ -1,6 +1,10 @@
+tasks:
+  - name: sshd.tmpdir
+    command: ["mkdir", "-p", "/var/run/sshd"]
+
 services:
   - name: ntpd
-    command: ["/usr/sbin/ntpd", "-n", "-N"]
+    command: ["/usr/sbin/ntpd", "-n", "-N", "-p", "/var/run/ntpd.pid"]
 
   - name: rsyslogd
     command: ["/usr/sbin/rsyslogd", "-n"]
@@ -8,9 +12,4 @@ services:
   - name: sshd
     command: ["/usr/sbin/sshd", "-D"]
     conditions:
-      - services.tmpfiles.state.running
-
-  - name: tmpfiles
-    command: ["mkdir", "-p", "/var/run/sshd"]
-    pidfile:
-      create: true
+      - tasks.sshd.tmpdir.state.completed

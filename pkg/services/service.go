@@ -13,19 +13,19 @@ import (
 
 const (
 	// Service running, pidfile exists
-	ServiceStatusRunning = "Running"
+	ServiceStatusRunning = "running"
 
 	// Service manually stopped.
-	ServiceStatusStopped = "Stopped"
+	ServiceStatusStopped = "stopped"
 
 	// Process running, but no pidfile exists yet
-	ServiceStatusStarting = "Starting"
+	ServiceStatusStarting = "starting"
 
 	// Process has been sent SIGTERM but has not yet terminated.
-	ServiceStatusStopping = "Stopping"
+	ServiceStatusStopping = "stopping"
 
 	// Service is misconfigured and cannot be started
-	ServiceStatusError = "Error"
+	ServiceStatusError = "error"
 )
 
 const (
@@ -53,7 +53,7 @@ type Service struct {
 	command    *exec.Cmd
 }
 
-func NewService(svcConfig *config.ConfigService) (*Service, error) {
+func NewService(registry state.ReferenceRegistry, svcConfig *config.ConfigService) (*Service, error) {
 	service := &Service{
 		Name:          svcConfig.Name,
 		Command:       svcConfig.Command,
@@ -99,6 +99,12 @@ func NewService(svcConfig *config.ConfigService) (*Service, error) {
 		ServiceStatusError,
 	))
 
+	runnable := state.NewCompositeCondition(fmt.Sprintf("services.%s.runnable", service.Name), false, true)
+	for _, condName := range service.Config.Conditions {
+		runnable.AddCondition(state.NewConditionRef(registry, condName))
+	}
+	service.Conditions = append(service.Conditions, runnable)
+
 	service.Actions = append(service.Actions, state.NewAction(
 		fmt.Sprintf("services.%s.action.start", service.Name),
 		func() error {
@@ -113,6 +119,37 @@ func NewService(svcConfig *config.ConfigService) (*Service, error) {
 			go service.Stop()
 			return nil
 		},
+	))
+
+	stoppedOrError := state.NewCompositeCondition("stop|error", true, false)
+	stoppedOrError.AddCondition(service.Conditions[0])
+	stoppedOrError.AddCondition(service.Conditions[4])
+
+	startingOrRunning := state.NewCompositeCondition("", true, false)
+	startingOrRunning.AddCondition(service.Conditions[2])
+	startingOrRunning.AddCondition(service.Conditions[3])
+
+	startable := state.NewCompositeCondition(fmt.Sprintf("services.%s.startable", service.Name), false, false)
+	startable.AddCondition(runnable)
+	startable.AddCondition(stoppedOrError)
+	service.Conditions = append(service.Conditions, startable)
+
+	stoppable := state.NewCompositeCondition(fmt.Sprintf("services.%s.stoppable", service.Name), false, false)
+	stoppable.AddCondition(state.NewNotCondition(runnable))
+	stoppable.AddCondition(startingOrRunning)
+	service.Conditions = append(service.Conditions, stoppable)
+
+	service.Triggers = append(service.Triggers, state.NewActionTrigger(
+		fmt.Sprintf("services.%s.trigger.start", service.Name),
+		startable,
+		service.Actions[0],
+		nil,
+	))
+	service.Triggers = append(service.Triggers, state.NewActionTrigger(
+		fmt.Sprintf("services.%s.trigger.stop", service.Name),
+		stoppable,
+		service.Actions[1],
+		nil,
 	))
 
 	return service, nil
@@ -170,9 +207,10 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 			}
 
 			s.Pid = 0
-			s.setStatus(ServiceStatusStopped)
 			if event.Status != 0 {
+				s.setStatus(ServiceStatusError)
 			} else {
+				s.setStatus(ServiceStatusStopped)
 			}
 
 		case event := <-pidfileChan:
@@ -191,8 +229,11 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 			switch cmd {
 			case ServiceActionStart:
 				// Requested to start service, act according to current status
+				// log.Println("start:", s.Name, s.Status.Get())
 				switch s.Status.Get() {
 				case ServiceStatusStopped:
+					fallthrough
+				case ServiceStatusError:
 					err := s.spawn()
 					if err != nil {
 						log.Println("Service failed to start:", s.Name, err.Error())
@@ -208,6 +249,7 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 					log.Println("Cannot start service in current state:", s.Name)
 				}
 			case ServiceActionStop:
+				// log.Println("stop:", s.Name, s.Status.Get())
 				switch s.Status.Get() {
 				case ServiceStatusStarting:
 				case ServiceStatusRunning:

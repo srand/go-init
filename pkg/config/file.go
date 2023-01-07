@@ -10,6 +10,7 @@ import (
 // Representation of a configuration file
 type ConfigFile struct {
 	Services []*ConfigService `yaml:"services"`
+	Tasks    []*ConfigTask    `yaml:"tasks"`
 }
 
 func (c *ConfigFile) Merge(otherConfig *ConfigFile) error {

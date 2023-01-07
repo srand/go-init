@@ -5,11 +5,13 @@ import "log"
 type StateLogger struct{}
 
 func (o *StateLogger) OnChange(obj State[string], val string) {
-	log.Println(obj.Name(), val)
+	log.Println("=", obj.Name(), val)
 }
 
 type ConditionLogger struct{}
 
 func (o *ConditionLogger) OnChange(obj Condition, val bool) {
-	log.Println(obj.Name(), val)
+	if obj.Name() != "" {
+		// log.Println(obj.Name(), val)
+	}
 }

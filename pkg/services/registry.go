@@ -3,20 +3,25 @@ package services
 import (
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/srand/go-init/pkg/config"
 	"github.com/srand/go-init/pkg/state"
 )
 
 type Registry struct {
-	Services   map[string]*Service
-	Actions    map[string]state.Action
-	Conditions map[string]state.Condition
-	Triggers   map[string]state.Trigger
+	Services      map[string]*Service
+	Tasks         map[string]*Task
+	Actions       map[string]state.Action
+	Conditions    map[string]state.Condition
+	Triggers      map[string]state.Trigger
+	observers     map[state.ReferenceObserver]struct{}
+	observerMutex sync.Mutex
 }
 
 func (r *Registry) AddService(svc *Service) {
 	r.Services[svc.Name] = svc
+	r.PublishReference(svc.Name, svc)
 
 	for _, action := range svc.Actions {
 		r.Actions[action.Name()] = action
@@ -27,7 +32,24 @@ func (r *Registry) AddService(svc *Service) {
 	}
 
 	for _, trig := range svc.Triggers {
-		r.Triggers[trig.Name()] = trig
+		r.AddTrigger(trig)
+	}
+}
+
+func (r *Registry) AddTask(task *Task) {
+	r.Tasks[task.Name] = task
+	r.PublishReference(task.Name, task)
+
+	for _, action := range task.Actions {
+		r.Actions[action.Name()] = action
+	}
+
+	for _, cond := range task.Conditions {
+		r.AddCondition(cond)
+	}
+
+	for _, trig := range task.Triggers {
+		r.AddTrigger(trig)
 	}
 }
 
@@ -37,8 +59,9 @@ func (r *Registry) FindAction(name string) state.Action {
 }
 
 func (r *Registry) AddCondition(cond state.Condition) {
-	log.Println("New condition:", cond.Name())
+	log.Println("+", cond.Name())
 	r.Conditions[cond.Name()] = cond
+	r.PublishReference(cond.Name(), cond)
 }
 
 func (r *Registry) FindCondition(name string) state.Condition {
@@ -47,21 +70,54 @@ func (r *Registry) FindCondition(name string) state.Condition {
 }
 
 func (r *Registry) AddTrigger(trig state.Trigger) {
-	log.Println("New trigger:", trig.Name())
+	log.Println("+", trig.Name())
 	r.Triggers[trig.Name()] = trig
+	r.PublishReference(trig.Name(), trig)
 	trig.Eval()
+}
+
+func (r *Registry) SubscribeReference(name string, observer state.ReferenceObserver) {
+	r.observerMutex.Lock()
+	defer r.observerMutex.Unlock()
+	r.observers[observer] = struct{}{}
+}
+
+func (r *Registry) UnsubscribeReference(name string, observer state.ReferenceObserver) {
+	r.observerMutex.Lock()
+	defer r.observerMutex.Unlock()
+	delete(r.observers, observer)
+}
+
+func (r *Registry) PublishReference(name string, obj any) {
+	r.observerMutex.Lock()
+	defer r.observerMutex.Unlock()
+
+	for observer := range r.observers {
+		observer.OnReferenceFound(name, obj)
+	}
+}
+
+func (r *Registry) UnpublishReference(name string, obj any) {
+	r.observerMutex.Lock()
+	defer r.observerMutex.Unlock()
+
+	for observer := range r.observers {
+		observer.OnReferenceLost(name, obj)
+	}
 }
 
 func NewRegistry(config *config.ConfigFile) (*Registry, error) {
 	registry := &Registry{
-		Services:   map[string]*Service{},
 		Actions:    map[string]state.Action{},
 		Conditions: map[string]state.Condition{},
+		Services:   map[string]*Service{},
+		Tasks:      map[string]*Task{},
 		Triggers:   map[string]state.Trigger{},
+		observers:  map[state.ReferenceObserver]struct{}{},
 	}
 
 	for _, svcConfig := range config.Services {
-		svc, err := NewService(svcConfig)
+		svc, err := NewService(registry, svcConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -69,43 +125,19 @@ func NewRegistry(config *config.ConfigFile) (*Registry, error) {
 		registry.AddService(svc)
 	}
 
-	// Create default triggers if none is configured
-	for name, svc := range registry.Services {
-		if len(svc.Config.Triggers) > 0 {
-			// Manual triggers present, skip default behavior
-			continue
+	for _, taskConfig := range config.Tasks {
+		task, err := NewTask(registry, taskConfig)
+		if err != nil {
+			return nil, err
 		}
 
-		startAction := svc.FindAction("start")
-		if startAction == nil {
-			panic("No action 'start' found in service: " + name)
-		}
-
-		stopAction := svc.FindAction("stop")
-		if stopAction == nil {
-			panic("No action 'stop' found in service: " + name)
-		}
-
-		preCond := state.NewCompositeCondition("")
-		for _, precondName := range svc.Preconditions {
-			cond := registry.FindCondition(precondName)
-			if cond == nil {
-				panic("Precondition not found: " + precondName)
-			}
-			preCond.AddCondition(cond)
-		}
-
-		name = fmt.Sprintf("services.%s.trigger.preconditions", name)
-		trig := state.NewActionTrigger(name, preCond, startAction, stopAction)
-
-		svc.AddTrigger(trig)
-		registry.AddTrigger(trig)
+		registry.AddTask(task)
 	}
 
 	// Create configured triggers
 	for name, svc := range registry.Services {
 		for _, trigConfig := range svc.Config.Triggers {
-			cond := state.NewCompositeCondition("")
+			cond := state.NewCompositeCondition("", false, false)
 
 			for _, trigCondName := range trigConfig.Conditions {
 				trigCond := registry.FindCondition(trigCondName)

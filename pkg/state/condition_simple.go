@@ -27,6 +27,7 @@ func (s *simpleCond) set(value bool) {
 
 func (s *simpleCond) Subscribe(observer Observer[Condition, bool]) {
 	s.observable.Subscribe(observer)
+	observer.OnChange(s, s.Get())
 }
 
 func (s *simpleCond) Unsubscribe(observer Observer[Condition, bool]) {
@@ -44,7 +45,7 @@ func NewCondition(name string, check ConditionCheckFunc) Condition {
 		check:      check,
 	}
 
-	cond.Subscribe(&ConditionLogger{})
+	// cond.Subscribe(&ConditionLogger{})
 
 	go check(cond.set)
 

@@ -1,7 +1,6 @@
 package monitors
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -47,7 +46,7 @@ func (m *ProcessMonitor) Supervise() {
 			continue
 		}
 
-		log.Printf("Process terminated: %d (%d)\n", wpid, status)
+		// log.Printf("Process terminated: %d (%d)\n", wpid, status)
 
 		m.broker.Publish(ProcessTerminationEvent{
 			Pid:    wpid,

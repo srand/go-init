@@ -54,6 +54,10 @@ func run(cmd *cobra.Command, args []string) {
 		go svc.Supervise(processMonitor, pidfileMonitor)
 	}
 
+	for _, task := range registry.Tasks {
+		go task.Supervise(processMonitor)
+	}
+
 	processMonitor.Supervise()
 }
 

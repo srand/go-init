@@ -52,7 +52,7 @@ func NewState(name string, value string) State[string] {
 		value:      value,
 	}
 
-	// state.Subscribe(&StateLogger{})
+	state.Subscribe(&StateLogger{})
 
 	return state
 }
