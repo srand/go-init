@@ -41,6 +41,17 @@ func run(cmd *cobra.Command, args []string) {
 		panic("failed to set system parameters")
 	}
 
+	rootCg := core.RootControlGroup()
+	cgControllers, err := rootCg.Controllers()
+	if err != nil {
+		panic(err)
+	}
+
+	err = rootCg.ExportControllers(cgControllers)
+	if err != nil {
+		log.Println("warning: could not export process controllers", err.Error())
+	}
+
 	registry, err := core.NewRegistry(configFile)
 	if err != nil {
 		panic(err)

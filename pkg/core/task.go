@@ -3,12 +3,11 @@ package core
 import (
 	"fmt"
 	"log"
-	"os/exec"
-	"syscall"
 
 	"github.com/srand/go-init/pkg/config"
 	"github.com/srand/go-init/pkg/monitors"
 	"github.com/srand/go-init/pkg/state"
+	"github.com/srand/go-init/pkg/utils"
 )
 
 const (
@@ -38,9 +37,9 @@ type TaskStatus string
 
 type Task struct {
 	Name    string
+	CGroup  *ControlGroup
 	Command []string
 	Config  *config.ConfigTask
-	Pid     int
 	Status  state.State[string]
 
 	Actions    []state.Action
@@ -48,7 +47,7 @@ type Task struct {
 	Triggers   []state.Trigger
 
 	actionChan chan TaskAction
-	command    *exec.Cmd
+	process    *utils.Process
 }
 
 func NewTask(registry state.ReferenceRegistry, svcConfig *config.ConfigTask) (*Task, error) {
@@ -56,7 +55,6 @@ func NewTask(registry state.ReferenceRegistry, svcConfig *config.ConfigTask) (*T
 		Name:       svcConfig.Name,
 		Command:    svcConfig.Command,
 		Config:     svcConfig,
-		Pid:        0,
 		actionChan: make(chan TaskAction),
 	}
 
@@ -128,6 +126,14 @@ func NewTask(registry state.ReferenceRegistry, svcConfig *config.ConfigTask) (*T
 		nil,
 	))
 
+	if svcConfig.CGroup != nil {
+		var err error
+		task.CGroup, err = NewDerivedControlGroup(registry, svcConfig.CGroup, task.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return task, nil
 }
 
@@ -144,20 +150,23 @@ func (s *Task) setStatus(status TaskStatus) {
 }
 
 func (s *Task) spawn() error {
-	cmd := exec.Command(s.Command[0], s.Command[1:]...)
-	err := cmd.Start()
-	if err != nil {
-		return err
+	s.process = utils.NewProcess(s.Command)
+	if s.CGroup != nil {
+		s.process.CGroup = s.CGroup.Name()
 	}
-
-	s.Pid = cmd.Process.Pid
-	return nil
+	return s.process.Start()
 }
 
 func (s *Task) kill() {
-	syscall.Kill(s.Pid, syscall.SIGTERM)
+	s.process.Terminate()
 }
 
+func (s *Task) pid() int {
+	if s.process != nil {
+		return s.process.Pid()
+	}
+	return 0
+}
 func (s *Task) FindAction(name string) state.Action {
 	for _, action := range s.Actions {
 		if action.Name() == fmt.Sprintf("tasks.%s.action.%s", s.Name, name) {
@@ -177,11 +186,11 @@ func (s *Task) Supervise(procMonitor *monitors.ProcessMonitor) {
 	for {
 		select {
 		case event := <-procChan:
-			if event.Pid != s.Pid {
+			if event.Pid != s.pid() {
 				continue
 			}
 
-			s.Pid = 0
+			s.process = nil
 			if event.Status != 0 {
 				s.setStatus(TaskStatusError)
 			} else {

@@ -3,12 +3,11 @@ package core
 import (
 	"fmt"
 	"log"
-	"os/exec"
-	"syscall"
 
 	"github.com/srand/go-init/pkg/config"
 	"github.com/srand/go-init/pkg/monitors"
 	"github.com/srand/go-init/pkg/state"
+	"github.com/srand/go-init/pkg/utils"
 )
 
 const (
@@ -39,8 +38,8 @@ type ServiceStatus string
 type Service struct {
 	Name          string
 	Command       []string
+	CGroup        *ControlGroup
 	Config        *config.ConfigService
-	Pid           int
 	PidFile       *PidFile
 	Preconditions []string
 
@@ -53,7 +52,7 @@ type Service struct {
 	Triggers   []state.Trigger
 
 	actionChan chan ServiceAction
-	command    *exec.Cmd
+	process    *utils.Process
 }
 
 func NewService(registry state.ReferenceRegistry, svcConfig *config.ConfigService) (*Service, error) {
@@ -61,7 +60,6 @@ func NewService(registry state.ReferenceRegistry, svcConfig *config.ConfigServic
 		Name:          svcConfig.Name,
 		Command:       svcConfig.Command,
 		Config:        svcConfig,
-		Pid:           0,
 		PidFile:       NewPidFile(svcConfig),
 		Preconditions: svcConfig.Conditions,
 		actionChan:    make(chan ServiceAction),
@@ -165,6 +163,14 @@ func NewService(registry state.ReferenceRegistry, svcConfig *config.ConfigServic
 		nil,
 	))
 
+	if svcConfig.CGroup != nil {
+		var err error
+		service.CGroup, err = NewDerivedControlGroup(registry, svcConfig.CGroup, service.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return service, nil
 }
 
@@ -181,18 +187,22 @@ func (s *Service) setStatus(status ServiceStatus) {
 }
 
 func (s *Service) spawn() error {
-	cmd := exec.Command(s.Command[0], s.Command[1:]...)
-	err := cmd.Start()
-	if err != nil {
-		return err
+	s.process = utils.NewProcess(s.Command)
+	if s.CGroup != nil {
+		s.process.CGroup = s.CGroup.Name()
 	}
-
-	s.Pid = cmd.Process.Pid
-	return nil
+	return s.process.Start()
 }
 
 func (s *Service) kill() {
-	syscall.Kill(s.Pid, syscall.SIGTERM)
+	s.process.Terminate()
+}
+
+func (s *Service) pid() int {
+	if s.process != nil {
+		return s.process.Pid()
+	}
+	return 0
 }
 
 func (s *Service) FindAction(name string) state.Action {
@@ -215,11 +225,11 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 	for {
 		select {
 		case event := <-procChan:
-			if event.Pid != s.Pid {
+			if event.Pid != s.pid() {
 				continue
 			}
 
-			s.Pid = 0
+			s.process = nil
 			if event.Status != 0 {
 				s.setStatus(ServiceStatusError)
 				s.Errors.Set(s.Errors.Get() + 1)
@@ -231,7 +241,7 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 			if event.Name == s.PidFile.Path {
 				switch s.Status.Get() {
 				case ServiceStatusStarting:
-					if pid := s.PidFile.Get(); pid == s.Pid {
+					if pid := s.PidFile.Get(); pid == s.pid() {
 						s.setStatus(ServiceStatusRunning)
 					}
 				default:
@@ -259,7 +269,7 @@ func (s *Service) Supervise(procMonitor *monitors.ProcessMonitor, pidfileMonitor
 					s.setStatus(ServiceStatusStarting)
 
 					if s.PidFile.Create {
-						s.PidFile.Write(s.Pid)
+						s.PidFile.Write(s.pid())
 					}
 				default:
 					log.Println("Cannot start service in current state:", s.Name)

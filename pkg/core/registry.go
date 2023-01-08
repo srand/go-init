@@ -10,6 +10,7 @@ import (
 )
 
 type Registry struct {
+	ControlGroups map[string]*ControlGroup
 	Services      map[string]*Service
 	Tasks         map[string]*Task
 	Actions       map[string]state.Action
@@ -17,6 +18,20 @@ type Registry struct {
 	Triggers      map[string]state.Trigger
 	observers     map[state.ReferenceObserver]struct{}
 	observerMutex sync.Mutex
+}
+
+func (r *Registry) AddControlGroup(cg *ControlGroup) {
+	r.ControlGroups[cg.Name()] = cg
+	r.PublishReference(cg.Name(), cg)
+
+	for _, cond := range cg.Conditions {
+		r.AddCondition(cond)
+	}
+}
+
+func (r *Registry) FindControlGroup(name string) *ControlGroup {
+	cg, _ := r.ControlGroups[name]
+	return cg
 }
 
 func (r *Registry) AddService(svc *Service) {
@@ -76,6 +91,20 @@ func (r *Registry) AddTrigger(trig state.Trigger) {
 	trig.Eval()
 }
 
+func (r *Registry) FindReference(name string) any {
+	if obj := r.FindAction(name); obj != nil {
+		return obj
+	}
+	if obj := r.FindCondition(name); obj != nil {
+		return obj
+	}
+	if obj := r.FindControlGroup(name); obj != nil {
+		return obj
+	}
+	fmt.Println(r.ControlGroups)
+	return nil
+}
+
 func (r *Registry) SubscribeReference(name string, observer state.ReferenceObserver) {
 	r.observerMutex.Lock()
 	defer r.observerMutex.Unlock()
@@ -128,12 +157,22 @@ func (r *Registry) UnpublishReference(name string, obj any) {
 
 func NewRegistry(config *config.ConfigFile) (*Registry, error) {
 	registry := &Registry{
-		Actions:    map[string]state.Action{},
-		Conditions: map[string]state.Condition{},
-		Services:   map[string]*Service{},
-		Tasks:      map[string]*Task{},
-		Triggers:   map[string]state.Trigger{},
-		observers:  map[state.ReferenceObserver]struct{}{},
+		Actions:       map[string]state.Action{},
+		Conditions:    map[string]state.Condition{},
+		ControlGroups: map[string]*ControlGroup{},
+		Services:      map[string]*Service{},
+		Tasks:         map[string]*Task{},
+		Triggers:      map[string]state.Trigger{},
+		observers:     map[state.ReferenceObserver]struct{}{},
+	}
+
+	for _, cgConfig := range config.CGroups {
+		svc, err := NewControlGroup(cgConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		registry.AddControlGroup(svc)
 	}
 
 	for _, svcConfig := range config.Services {

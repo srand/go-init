@@ -6,6 +6,16 @@ Yet another init
 Example configuration:
 
   .. code:: yaml
+    
+    cgroups:
+      - name: "services"
+        config:
+          cgroup.subtree_control: "+cpu +cpuset"
+      
+      - name: "services.throttled"
+        config:
+          cgroup.subtree_control: "+cpuset"
+          cpu.max: 10000 # max 10 %
 
     tasks:
       - name: sshd.tmpdir
@@ -22,13 +32,48 @@ Example configuration:
         command: ["/usr/sbin/sshd", "-D"]
         conditions:
           - tasks.sshd.tmpdir.state.completed
-
+    
+      - name: stress
+        command: ["stress-ng", "-c", "1"]
+        cgroup:
+          name: "services.throttled"
+          config:
+            # Pin service to cpu0
+            cpuset.cpus: 0
+    
     sysctl:
       include:
         - /etc/sysctl.d/*.conf
       parameters:
         - key: net.ipv4.conf.all.forwarding
           value: 1
+
+
+Control Groups (cgroups)
+------------------------
+
+Process control groups are used to control system resources available to a service or task. 
+For example, you may restrict processor time, memory consumption, io throughput, etc.
+
+Schema
+^^^^^^
+
++--------------+--------+--------------------------------------------------------------------------------------+
+| Attribute    | Type   | Description                                                                          |
++==============+========+======================================================================================+
+| name         | string | Name of the control group. '.' characters descend the control group hierachy.        |
++--------------+--------+--------------------------------------------------------------------------------------+
+| config       | object | List of key-value pairs configuring the cgroup. Keys are passed directly to cgroups. |
++--------------+--------+--------------------------------------------------------------------------------------+
+| config.key   | string | Attribute key, e.g. 'cpu.max'.                                                       |
++--------------+--------+--------------------------------------------------------------------------------------+
+| config.value | string | Attribute value, e.g. 10000                                                          |
++--------------+--------+--------------------------------------------------------------------------------------+
+
+Conditions
+^^^^^^^^^^
+
+ - cgroups.<cgroup-name>.configured
 
 
 Services
@@ -44,6 +89,12 @@ Schema
 | Attribute       | Type      | Description                                       |
 +=================+===========+===================================================+
 | name            | string    | Name of the service                               |
++-----------------+-----------+---------------------------------------------------+
+| cgroup          | object    |                                                   |
++-----------------+-----------+---------------------------------------------------+
+| cgroup.name     | string    | Name of parent control group.                     |
++-----------------+-----------+---------------------------------------------------+
+| cgroup.config   | object    | List of attributes applied to the service cgroup. |
 +-----------------+-----------+---------------------------------------------------+
 | command         | string    | Command to run and supervise                      |
 +-----------------+-----------+---------------------------------------------------+
@@ -104,15 +155,21 @@ or by trigger.
 Schema
 ^^^^^^
 
-+-----------------+-----------+---------------------------------------------------+
-| Attribute       | Type      | Description                                       |
-+=================+===========+===================================================+
-| name            | string    | Name of the service                               |
-+-----------------+-----------+---------------------------------------------------+
-| command         | string    | Command to run and supervise                      |
-+-----------------+-----------+---------------------------------------------------+
-| conditions      | []string  | List of preconditions that must be met            |
-+-----------------+-----------+---------------------------------------------------+
++---------------+----------+------------------------------------------------+
+| Attribute     | Type     | Description                                    |
++===============+==========+================================================+
+| name          | string   | Name of the service                            |
++---------------+----------+------------------------------------------------+
+| cgroup        | object   |                                                |
++---------------+----------+------------------------------------------------+
+| cgroup.name   | string   | Name of parent control group.                  |
++---------------+----------+------------------------------------------------+
+| cgroup.config | object   | List of attributes applied to the task cgroup. |
++---------------+----------+------------------------------------------------+
+| command       | string   | Command to run and supervise                   |
++---------------+----------+------------------------------------------------+
+| conditions    | []string | List of preconditions that must be met         |
++---------------+----------+------------------------------------------------+
 
 
 Actions

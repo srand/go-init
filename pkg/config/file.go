@@ -9,9 +9,10 @@ import (
 
 // Representation of a configuration file
 type ConfigFile struct {
-	Services []*ConfigService `yaml:"services"`
-	Sysctl   *ConfigSysctl    `yaml:"sysctl"`
-	Tasks    []*ConfigTask    `yaml:"tasks"`
+	CGroups  []*ConfigControlGroup `yaml:"cgroups"`
+	Services []*ConfigService      `yaml:"services"`
+	Sysctl   *ConfigSysctl         `yaml:"sysctl"`
+	Tasks    []*ConfigTask         `yaml:"tasks"`
 }
 
 func (c *ConfigFile) Merge(otherConfig *ConfigFile) error {

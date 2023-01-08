@@ -1,8 +1,24 @@
+cgroups:
+  - name: "services"
+    config:
+      cgroup.subtree_control: "+cpu +cpuset"
+  - name: "services.throttled"
+    config:
+      cgroup.subtree_control: "+cpu +cpuset"
+      cpu.max: 10000 # max 10 %
+
 tasks:
   - name: sshd.tmpdir
     command: ["mkdir", "-p", "/var/run/sshd"]
 
 services:
+  - name: stress
+    command: ["stress-ng", "-c", "1"]
+    cgroup:
+      name: "services.throttled"
+      config:
+        cpuset.cpus: 0  # Pin service to cpu0
+
   - name: ntpd
     command: ["/usr/sbin/ntpd", "-n", "-N", "-p", "/var/run/ntpd.pid"]
 

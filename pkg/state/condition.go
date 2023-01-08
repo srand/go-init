@@ -12,6 +12,7 @@ type ReferenceObserver interface {
 }
 
 type ReferenceRegistry interface {
+	FindReference(string) any
 	SubscribeReference(string, ReferenceObserver)
 	UnsubscribeReference(string, ReferenceObserver)
 }
