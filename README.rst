@@ -16,6 +16,14 @@ Example configuration:
         config:
           cgroup.subtree_control: "+cpuset"
           cpu.max: 10000 # max 10 %
+    
+    modules:
+      include:
+        - /etc/modules-load.d/*.conf
+      probe:
+        - name: "md_mod"
+          parameters: 
+            - "start_ro=1"
 
     tasks:
       - name: sshd.tmpdir
@@ -74,6 +82,35 @@ Conditions
 ^^^^^^^^^^
 
  - cgroups.<cgroup-name>.configured
+
+
+Modules
+-------
+
+Loads and monitors kernel modules. A condition is created for each loaded module, 
+whether it is loaded by init or elsewhere. If a module is unloaded, the condition 
+is deasserted. 
+
+
+Schema
+^^^^^^
+
++-------------------+----------+---------------------------------------------------+
+| Attribute         | Type     | Description                                       |
++===================+==========+===================================================+
+| include           | string   | Glob pattern matching module config files to load |
++-------------------+----------+---------------------------------------------------+
+| probe             | []module | Modules to probe                                  |
++-------------------+----------+---------------------------------------------------+
+| module.name       | string   | Name of module                                    |
++-------------------+----------+---------------------------------------------------+
+| module.parameters | []string | List of module parameters                         |
++-------------------+----------+---------------------------------------------------+
+
+Conditions
+^^^^^^^^^^
+
+ - modules.<module-name>.loaded
 
 
 Services

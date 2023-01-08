@@ -7,6 +7,14 @@ cgroups:
       cgroup.subtree_control: "+cpu +cpuset"
       cpu.max: 10000 # max 10 %
 
+modules:
+  include:
+    - /etc/modules-load.d/*.conf
+  probe:
+    - name: "md_mod"
+      parameters: 
+        - "start_ro=1"
+
 tasks:
   - name: sshd.tmpdir
     command: ["mkdir", "-p", "/var/run/sshd"]

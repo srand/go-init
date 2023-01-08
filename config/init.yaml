@@ -9,11 +9,11 @@ cgroups:
 
 modules:
   include:
-    - /etc/modprobe.d/*.conf
+    - /etc/load-modules.d/*.conf
   probe:
-    - name: "netfilter"
+    - name: "md_mod"
       parameters: 
-        - "udp=1"
+        - "start_ro=1"
 
 filesystems:
   include:

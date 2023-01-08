@@ -12,6 +12,7 @@ type ConfigFile struct {
 	CGroups  []*ConfigControlGroup `yaml:"cgroups"`
 	Services []*ConfigService      `yaml:"services"`
 	Sysctl   *ConfigSysctl         `yaml:"sysctl"`
+	Modules  *ConfigModules        `yaml:"modules"`
 	Tasks    []*ConfigTask         `yaml:"tasks"`
 }
 

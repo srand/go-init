@@ -70,7 +70,7 @@ func run(cmd *cobra.Command, args []string) {
 	go ueventMonitor.Supervise()
 
 	monitor := monitors.NewModuleMonitor(ueventMonitor)
-	core.NewModuleLoader(registry, monitor)
+	core.NewModuleLoader(registry, monitor, configFile.Modules)
 
 	processMonitor := monitors.NewProcessMonitor()
 
