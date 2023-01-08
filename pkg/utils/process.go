@@ -27,7 +27,8 @@ func (p *Process) Pid() int {
 }
 
 func (p *Process) Start() error {
-	cmd := []string{"/sbin/init-exec"}
+	cmd := []string{"init-exec"}
+	cmd[0], _ = exec.LookPath(cmd[0])
 	if p.CGroup != "" {
 		cmd = append(cmd, "--cgroup", p.CGroup)
 	}
