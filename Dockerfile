@@ -9,7 +9,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y ntp openssh-server rsyslog stress-ng
 
 FROM base
-ADD config/example.yaml /etc/init.yaml
+ADD config/init.yaml /etc/init.yaml
 COPY --from=build /opt/init /sbin/init
 COPY --from=build /opt/init-exec /sbin/init-exec
 ENTRYPOINT ["/sbin/init"]

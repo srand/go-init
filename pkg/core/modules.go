@@ -26,7 +26,6 @@ func NewModuleLoader(registry state.ReferenceRegistry, monitor *monitors.ModuleM
 	}
 	monitor.Subscribe(loader)
 	loader.parseProcModules()
-	fmt.Println(config)
 	loader.loadModules(config)
 	loader.loadIncludes(config)
 	return loader
