@@ -2,13 +2,13 @@ package state
 
 import "sync"
 
-type Observable[Object any, Value string | bool | int] interface {
+type Observable[Object any, Value any] interface {
 	Subscribe(observer Observer[Object, Value])
 	Unsubscribe(observer Observer[Object, Value])
 	Publish()
 }
 
-type SimpleObservable[Object any, Value string | bool | int] struct {
+type SimpleObservable[Object any, Value any] struct {
 	Observable[Object, Value]
 	mutex     sync.Mutex
 	observers map[Observer[Object, Value]]struct{}
@@ -37,12 +37,12 @@ func (o *SimpleObservable[Object, Value]) Publish(obj Object, val Value) {
 	}
 }
 
-func NewObservable[Object any, Value bool | string | int]() *SimpleObservable[Object, Value] {
+func NewObservable[Object any, Value any]() *SimpleObservable[Object, Value] {
 	return &SimpleObservable[Object, Value]{
 		observers: map[Observer[Object, Value]]struct{}{},
 	}
 }
 
-type Observer[Object any, Value string | bool | int] interface {
+type Observer[Object any, Value any] interface {
 	OnChange(obj Object, value Value)
 }

@@ -12,6 +12,8 @@ type ReferenceObserver interface {
 }
 
 type ReferenceRegistry interface {
+	AddReference(any) error
+	RemoveReference(any) error
 	FindReference(string) any
 	SubscribeReference(string, ReferenceObserver)
 	UnsubscribeReference(string, ReferenceObserver)

@@ -2,7 +2,7 @@ package state
 
 type ConditionCheckFunc func(update func(bool))
 
-type simpleCond struct {
+type SimpleCond struct {
 	Condition
 	observable *SimpleObservable[Condition, bool]
 	name       string
@@ -10,36 +10,36 @@ type simpleCond struct {
 	check      ConditionCheckFunc
 }
 
-func (s *simpleCond) Name() string {
+func (s *SimpleCond) Name() string {
 	return s.name
 }
 
-func (s *simpleCond) Get() bool {
+func (s *SimpleCond) Get() bool {
 	return s.value
 }
 
-func (s *simpleCond) set(value bool) {
+func (s *SimpleCond) Set(value bool) {
 	if s.value != value {
 		s.value = value
 		s.Publish()
 	}
 }
 
-func (s *simpleCond) Subscribe(observer Observer[Condition, bool]) {
+func (s *SimpleCond) Subscribe(observer Observer[Condition, bool]) {
 	s.observable.Subscribe(observer)
 	observer.OnChange(s, s.Get())
 }
 
-func (s *simpleCond) Unsubscribe(observer Observer[Condition, bool]) {
+func (s *SimpleCond) Unsubscribe(observer Observer[Condition, bool]) {
 	s.observable.Unsubscribe(observer)
 }
 
-func (s *simpleCond) Publish() {
+func (s *SimpleCond) Publish() {
 	s.observable.Publish(s, s.Get())
 }
 
-func NewCondition(name string, check ConditionCheckFunc) Condition {
-	cond := &simpleCond{
+func NewCondition(name string, check ConditionCheckFunc) *SimpleCond {
+	cond := &SimpleCond{
 		observable: NewObservable[Condition, bool](),
 		name:       name,
 		check:      check,
@@ -47,7 +47,9 @@ func NewCondition(name string, check ConditionCheckFunc) Condition {
 
 	// cond.Subscribe(&ConditionLogger{})
 
-	go check(cond.set)
+	if check != nil {
+		go check(cond.Set)
+	}
 
 	return cond
 }

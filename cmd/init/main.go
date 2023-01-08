@@ -63,6 +63,15 @@ func run(cmd *cobra.Command, args []string) {
 	}
 	go pidfileMonitor.Supervise()
 
+	ueventMonitor, err := monitors.NewUEventMonitor()
+	if err != nil {
+		panic(err)
+	}
+	go ueventMonitor.Supervise()
+
+	monitor := monitors.NewModuleMonitor(ueventMonitor)
+	core.NewModuleLoader(registry, monitor)
+
 	processMonitor := monitors.NewProcessMonitor()
 
 	for _, svc := range registry.Services {

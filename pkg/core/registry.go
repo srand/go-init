@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -89,6 +90,24 @@ func (r *Registry) AddTrigger(trig state.Trigger) {
 	r.Triggers[trig.Name()] = trig
 	r.PublishReference(trig.Name(), trig)
 	trig.Eval()
+}
+
+func (r *Registry) AddReference(obj any) error {
+	if cond, ok := obj.(state.Condition); ok {
+		r.AddCondition(cond)
+		return nil
+	}
+
+	if trig, ok := obj.(state.Trigger); ok {
+		r.AddTrigger(trig)
+		return nil
+	}
+
+	return errors.New("not implemented")
+}
+
+func (r *Registry) RemoveReference(obj any) error {
+	return nil
 }
 
 func (r *Registry) FindReference(name string) any {
